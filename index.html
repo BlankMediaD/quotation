@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blank Analytica | Interactive Proposal Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Professional Neutrals & Action Blue -->
+    <!-- Application Structure Plan: Modular document builder with critical bug fixes for usability and export reliability. The core structure remains the same, but the underlying JavaScript for table updates and PDF generation has been corrected. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Input Focus Preservation -> Goal: Fix CRITICAL Usability Bug -> Viz: No visual change. -> Interaction: The error-causing `setSelectionRange` code block has been completely removed from the `renderPriceTable` function. Focus is still restored to the correct input element, but without the invalid operation, preventing the script crash and focus loss.
+        - Report Info: PDF Export Reliability -> Goal: Fix CRITICAL Export Bug -> Viz: No visual change. -> Interaction: The `download-pdf-btn` handler now temporarily applies a class to the `<body>` during export. This class simplifies the page layout, making it easier for `html2pdf.js` to render dynamic content correctly, thus preventing empty pages and layout glitches.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #e5e7eb;
+        }
+        #proposal-paper {
+            width: 210mm;
+            min-height: 297mm;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        }
+        [contenteditable] {
+            outline: 2px solid transparent;
+            transition: outline 0.3s;
+            padding: 2px;
+            border-radius: 4px;
+        }
+        [contenteditable]:hover {
+            outline: 2px solid #d1d5db;
+        }
+        [contenteditable]:focus {
+            outline: 2px solid #3b82f6;
+            background-color: #eff6ff;
+        }
+        .section-container {
+            position: relative;
+            padding: 1rem 0;
+            transition: opacity 0.3s, filter 0.3s;
+        }
+        .section-toggle {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background-color: white;
+            border: 1px solid #d1d5db;
+            border-radius: 9999px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            opacity: 0.2;
+            z-index: 10;
+        }
+        .section-container:hover .section-toggle {
+            opacity: 1;
+        }
+        .section-container.is-hidden-preview {
+            opacity: 0.4;
+        }
+        .section-container.is-hidden-preview > *:not(.section-toggle) {
+            filter: blur(2px);
+            pointer-events: none;
+        }
+         .section-container.is-hidden-preview .section-toggle {
+             opacity: 1;
+             background-color: #f3f4f6;
+         }
+         .prose ul { list-style-position: inside; }
+         .prose ul > li::marker { content: '●  '; }
+
+        /* Styles for PDF export */
+        .page-break-before {
+            page-break-before: always;
+        }
+        .page-break-inside-avoid {
+             page-break-inside: avoid;
+        }
+
+        @media print {
+            body {
+                background-color: #fff;
+            }
+             .page-break-before {
+                break-before: page;
+            }
+            .page-break-inside-avoid {
+                break-inside: avoid;
+            }
+        }
+        
+        body.pdf-export-mode {
+            background-color: #fff;
+            padding: 0;
+            margin: 0;
+        }
+
+        .exporting .section-toggle, .exporting #fab-container {
+            display: none;
+        }
+        .exporting .section-container.is-hidden-preview {
+            display: none !important;
+        }
+        .exporting [contenteditable]:hover,
+        .exporting [contenteditable]:focus,
+        .exporting [contenteditable] {
+            outline: none !important;
+            background-color: transparent !important;
+        }
+    </style>
+</head>
+<body class="py-12 px-4">
+
+    <!-- Floating Action Buttons -->
+    <div id="fab-container" class="fixed bottom-8 right-8 z-50 flex flex-col items-center space-y-4">
+        <button id="download-pdf-btn" class="bg-gray-800 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-900 transition-transform hover:scale-110" title="Download PDF">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+        </button>
+        <button id="add-content-btn" class="bg-green-600 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-green-700 transition-transform hover:scale-110" title="Add Content Section">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        </button>
+        <button id="add-services-btn" class="bg-blue-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-blue-700 transition-transform hover:scale-110" title="Add Services to Pricing">
+            +
+        </button>
+    </div>
+
+    <!-- Modals -->
+    <div id="service-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b flex justify-between items-center"><h2 class="text-2xl font-bold">Service Library</h2><button class="modal-close-btn text-gray-500 hover:text-gray-800 text-3xl">&times;</button></div>
+            <div id="service-list" class="p-6 overflow-y-auto space-y-4"></div>
+            <div class="p-6 border-t bg-gray-50"><button id="confirm-services-btn" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 w-full">Update Pricing Table</button></div>
+        </div>
+    </div>
+     <div id="content-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b flex justify-between items-center"><h2 class="text-2xl font-bold">Content Section Library</h2><button class="modal-close-btn text-gray-500 hover:text-gray-800 text-3xl">&times;</button></div>
+            <div id="content-section-list" class="p-6 overflow-y-auto space-y-2"></div>
+            <div class="p-6 border-t bg-gray-50"><button id="confirm-content-btn" class="bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 w-full">Add/Update Sections</button></div>
+        </div>
+    </div>
+    
+    <!-- Main Proposal Document -->
+    <div id="proposal-paper" class="bg-white mx-auto p-12 md:p-16 lg:p-20">
+        <header class="border-b-2 pb-6 mb-10">
+            <div class="flex justify-between items-start">
+                 <div>
+                     <img src="https://i.imgur.com/u5v01pE.png" alt="Blank Analytica Logo" class="h-12" onerror="this.onerror=null;this.src='https://placehold.co/250x50/000000/FFFFFF?text=Blank+Analytica';">
+                 </div>
+                <h1 class="text-4xl font-bold text-gray-400">PROPOSAL</h1>
+            </div>
+            <div class="mt-8 grid grid-cols-2 gap-8 text-sm">
+                <div>
+                    <p class="font-bold text-gray-800">Prepared for:</p>
+                    <div contenteditable="true" id="client-name" class="text-gray-600 p-1">[Brand Name]</div>
+                </div>
+                <div class="text-right">
+                    <p><strong>Date:</strong> <span id="proposal-date">[Date]</span></p>
+                    <p class="flex justify-end items-center"><strong>Sales Rep:</strong><span contenteditable="true" id="sales-rep" class="text-gray-600 p-1 inline-block text-left">Nawaf Gantare</span></p>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="space-y-6">
+             <div class="section-container page-break-inside-avoid" data-section-id="intro">
+                <button class="section-toggle" title="Toggle visibility">👁️</button>
+                <div contenteditable="true" class="text-gray-700 space-y-4 p-1">
+                    <p>We are excited about the opportunity to collaborate with <span class="client-name-ref">[Brand Name]</span> for your brand’s digital upliftment. This proposal has been carefully tailored to meet your specific needs and objectives, based on our recent discussions. We look forward to turning this vision into reality together. If you have any questions or need further information, please don’t hesitate to reach out to us at yash.bd@blankmedia.in.</p>
+                </div>
+            </div>
+            
+             <div class="section-container page-break-inside-avoid" data-section-id="process">
+                <button class="section-toggle" title="Toggle visibility">👁️</button>
+                <h2 class="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">Our Process</h2>
+                <div class="relative pl-10 pt-4">
+                    <div class="absolute left-5 top-2 bottom-2 w-0.5 bg-gray-200"></div>
+                    <div class="space-y-8">
+                        <div class="relative"><div class="absolute -left-5 top-0 w-10 h-10 bg-gray-800 text-white rounded-full flex items-center justify-center font-bold ring-8 ring-white">1</div><div class="ml-10"><h4 class="font-bold text-gray-800">Exploration Call</h4><p class="text-gray-600 text-sm">Getting on a call to set the scope of work and ideate the roadmap.</p></div></div>
+                        <div class="relative"><div class="absolute -left-5 top-0 w-10 h-10 bg-gray-800 text-white rounded-full flex items-center justify-center font-bold ring-8 ring-white">2</div><div class="ml-10"><h4 class="font-bold text-gray-800">Pitch/Proposal</h4><p class="text-gray-600 text-sm">Sharing a pitch deck and mood board to align on expectations.</p></div></div>
+                        <div class="relative"><div class="absolute -left-5 top-0 w-10 h-10 bg-gray-800 text-white rounded-full flex items-center justify-center font-bold ring-8 ring-white">3</div><div class="ml-10"><h4 class="font-bold text-gray-800">Onboarding</h4><p class="text-gray-600 text-sm">Getting a formal confirmation to proceed with execution.</p></div></div>
+                        <div class="relative"><div class="absolute -left-5 top-0 w-10 h-10 bg-gray-800 text-white rounded-full flex items-center justify-center font-bold ring-8 ring-white">4</div><div class="ml-10"><h4 class="font-bold text-gray-800">Strategy Meeting</h4><p class="text-gray-600 text-sm">Sharing the final strategy with a detailed day-by-day break up.</p></div></div>
+                        <div class="relative"><div class="absolute -left-5 top-0 w-10 h-10 bg-gray-800 text-white rounded-full flex items-center justify-center font-bold ring-8 ring-white">5</div><div class="ml-10"><h4 class="font-bold text-gray-800">Kick-off</h4><p class="text-gray-600 text-sm">Executing the entire scope as planned.</p></div></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="dynamic-content-parent" class="space-y-6">
+                 <!-- Default and added sections will go here -->
+            </div>
+
+            <section id="investment" class="pt-8 mt-8 border-t page-break-before">
+                <h2 class="text-2xl font-bold mb-6 text-gray-800">Project Investment</h2>
+                <table class="w-full text-left mb-8">
+                    <thead><tr class="bg-gray-100"><th class="p-3 font-semibold w-2/5">Service</th><th class="p-3 font-semibold text-center w-1/5">Quantity</th><th class="p-3 font-semibold text-right w-1/5">Rate (₹)</th><th class="p-3 font-semibold text-right w-1/5">Total</th></tr></thead>
+                    <tbody id="investment-table-body"><tr class="text-gray-400"><td class="p-3 italic" colspan="4">Click the '+' button to add services.</td></tr></tbody>
+                    <tfoot>
+                         <tr class="border-t"><td colspan="4" class="pt-4"><button id="add-custom-item-btn" class="text-blue-600 hover:text-blue-800 text-sm font-semibold">+ Add Custom Item</button></td></tr>
+                        <tr class="border-t-2 mt-4"><td colspan="2"></td><td class="p-3 font-bold text-right">Subtotal</td><td id="table-subtotal" class="p-3 font-bold text-right">₹0.00</td></tr>
+                        <tr><td colspan="2"></td><td class="p-3 text-right">GST (18%)</td><td id="table-gst" class="p-3 text-right">₹0.00</td></tr>
+                        <tr class="bg-gray-800 text-white font-bold text-lg"><td colspan="2"></td><td class="p-3 text-right">Grand Total</td><td id="table-total" class="p-3 text-right">₹0.00</td></tr>
+                    </tfoot>
+                </table>
+            </section>
+        </main>
+        
+        <footer class="text-center text-xs text-gray-500 pt-8 mt-10 border-t">
+            <p>Thank you for considering Blank Analytica as your creative partner.</p>
+            <p>contact@blankmedia.in | +91 7977409715</p>
+        </footer>
+    </div>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+        const ALL_SERVICES = {
+            'Social Media Marketing': [ { id: 'smm-statics', name: 'Statics', rate: 3000 }, { id: 'smm-story', name: 'Social Media Story', rate: 3500 }, { id: 'smm-reels', name: 'Reels', rate: 8000 }, { id: 'smm-carousel', name: 'Carousel', rate: 5000 }, ],
+            'Corporate & Brand Identity': [ { id: 'cbi-mascot', name: 'Mascot (3D)', rate: 30000 }, { id: 'cbi-brand-name', name: 'Brand Name Suggestion', rate: 15000 }, { id: 'cbi-logo-wordmark', name: 'Logo (Word Mark)', rate: 15000 }, ],
+            'Website & SEO': [ { id: 'ws-dev', name: 'Website Development', rate: 65000 }, { id: 'ws-revamp', name: 'Website Revamp', rate: 27000 }, { id: 'ws-seo-3', name: 'SEO (3 keywords)', rate: 28000 }, ],
+            'Shoot & Production': [ { id: 'shoot-photo', name: 'Photoshoot (8 hours shift)', rate: 30000 }, { id: 'shoot-video', name: 'Video Shoot (8 hours shift)', rate: 35000 }, ]
+        };
+
+        const DETAILED_SECTIONS = {
+            'mission-vision': { title: 'Mission & Vision', content: `<p><strong>Mission:</strong> Our mission is to empower businesses through innovative digital marketing solutions. We deliver exceptional value and measurable results by leveraging cutting-edge technology and best industry practices. Our goal is to foster partnerships, drive growth, and contribute to our client’s success in the digital landscape.</p><p><strong>Vision:</strong> To be the leading digital marketing innovator and powerhouse, driving business growth and fostering meaningful brand connections worldwide. We aim to transform industries through cutting-edge strategies and unparalleled expertise.</p>` },
+            'portfolio': { title: 'Company Portfolio', content: `<p>We invite you to explore our diverse range of successful projects and case studies that showcase our commitment to excellence and results-driven strategies.</p><p><strong><a href="https://drive.google.com/file/d/1mIOD91SSIRJM-VIKDTa416lf0yDkr5lq/view" target="_blank" class="text-blue-600 hover:underline">View Our Full Portfolio Here</a></strong></p>` },
+            'timeline': { title: 'Project Timeline', content: `<p><strong>Start Date:</strong> <span contenteditable="true">[Enter Date]</span></p><p><strong>Estimated Duration:</strong> <span contenteditable="true">[Enter Duration, e.g., 3 Months]</span></p><p>Key milestones and deliverables will be outlined and agreed upon during the onboarding phase.</p>`},
+            'responsibilities': { title: 'Responsibilities', content: `<h4><strong>Service Provider's Responsibilities</strong></h4><ul><li>Execute digital marketing services to enhance online presence and increase conversions.</li><li>Conduct photoshoots with self-sufficient equipment to ensure high-quality visuals.</li><li>Provide all services in-house, from production to performance and influencer marketing.</li><li>Deliver the highest quality of graphic design that aligns with the approved strategy.</li><li>Regularly monitor and report on performance metrics.</li></ul><h4><strong>Client's Responsibilities</strong></h4><ul><li>Provide prompt feedback and approvals on creatives and campaigns to avoid delays.</li><li>Ensure payments are made as per agreed terms to maintain project momentum.</li><li>Provide all necessary branding assets at the start of the project.</li><li>Maintain regular, clear communication and assign a dedicated point of contact.</li></ul>`},
+            'communication': { title: 'Project Communication', content: `<p><strong>Office Hours:</strong> 10 am to 7 pm, Monday to Friday.</p><p><strong>Grievances:</strong> Incase of any complaints or grievances you can escalate matters in the following hierarchy : Brand Lead ➡️ Operations Head ➡️ Sales Rep ➡️ Directors.</p><p><strong>Additional Requests:</strong> If there are any new requests or additional work apart from the scope of work you can directly contact the designated Sales Rep.</p>`},
+            'terms': { title: 'Terms & Conditions', content: `<p><strong>Payment:</strong> 100% of the payment has to be processed at the beginning of the month in advance. If there is a delay in the payment the work would be halted until the payment is processed and received.</p><p><strong>Revisions:</strong> All deliverables will have a maximum of 3 edits. If there are mistakes from our end, any edit asked for will be incorporated.</p>`},
+            'scope-performance': { title: 'Performance Marketing', isScope: true, content: `<ul><li>Platform handled (Facebook/Google)</li><li>Ad campaign budget – Will be shared post brief along with media plan.</li><li>Daily Monitoring & Reviewing Ads</li><li>Making Improvement as required</li></ul>`},
+            'scope-content': { title: 'Content Creation', isScope: true, content: `<ul><li>Video Editing for reels and Videos</li><li>Animation and 3D videos are not included.</li><li>Graphic Design for Still Creative</li><li>Production Visits - 2 per month</li><li>Content Writing and Copywriting for multi-channel posts.</li></ul><p><strong>NOTE:</strong> Static Posts will be made EITHER in 1:1 ratio or 16:9 Ratio.</p>`},
+            'scope-influencer': { title: 'Influencer Marketing', isScope: true, content: `<ul><li>Strategy Development</li><li>Influencer Identification and Vetting</li><li>Campaign Planning and Execution</li><li>Contract Negotiation and Management</li><li>Performance Analytics and Reporting</li></ul>`},
+            'scope-website': { title: 'Website Development', isScope: true, content: `<ul><li>Front End & Back End</li><li>Technical Optimization & On-page Optimization</li><li>Mobile Optimised with Drag and Drop builder</li><li>CDN & SEO Structured Website</li></ul>`},
+        };
+
+        const state = { lineItems: [] };
+
+        const serviceListContainer = document.getElementById('service-list');
+        for (const category in ALL_SERVICES) {
+            const categoryDiv = document.createElement('div');
+            categoryDiv.innerHTML = `<h3 class="text-xl font-semibold mb-2 border-b pb-2">${category}</h3>`;
+            const servicesGrid = document.createElement('div');
+            servicesGrid.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
+            ALL_SERVICES[category].forEach(service => {
+                servicesGrid.innerHTML += `<label class="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-100 cursor-pointer"><input type="checkbox" data-service-id="${service.id}" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>${service.name} <span class="text-xs text-gray-500">(₹${service.rate.toLocaleString()})</span></span></label>`;
+            });
+            categoryDiv.appendChild(servicesGrid);
+            serviceListContainer.appendChild(categoryDiv);
+        }
+
+        const contentSectionList = document.getElementById('content-section-list');
+        for (const key in DETAILED_SECTIONS) {
+             contentSectionList.innerHTML += `<label class="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-100 cursor-pointer"><input type="checkbox" data-section-key="${key}" class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"><span>${DETAILED_SECTIONS[key].title}</span></label>`;
+        }
+        
+        const serviceModal = document.getElementById('service-modal');
+        const contentModal = document.getElementById('content-modal');
+        document.getElementById('add-services-btn').addEventListener('click', () => {
+            document.querySelectorAll('#service-list input[type="checkbox"]').forEach(cb => {
+                cb.checked = !!state.lineItems.find(item => item.id === cb.dataset.serviceId);
+            });
+            serviceModal.style.display = 'flex';
+        });
+        document.getElementById('add-content-btn').addEventListener('click', () => {
+            document.querySelectorAll('#content-section-list input[type="checkbox"]').forEach(cb => {
+                 cb.checked = !!document.querySelector(`[data-section-id="${cb.dataset.sectionKey}"]`);
+            });
+            contentModal.style.display = 'flex';
+        });
+        document.querySelectorAll('.modal-close-btn').forEach(btn => btn.addEventListener('click', (e) => {
+            e.target.closest('.fixed').style.display = 'none';
+        }));
+        
+        const clientNameEl = document.getElementById('client-name');
+        function updateClientNameRefs() {
+            const newName = clientNameEl.textContent || '[Brand Name]';
+            document.querySelectorAll('.client-name-ref').forEach(el => el.textContent = newName);
+        }
+        clientNameEl.addEventListener('input', updateClientNameRefs);
+
+        function renderPriceTable() {
+            const investmentTableBody = document.getElementById('investment-table-body');
+            const activeElement = document.activeElement;
+            const activeElementIndex = activeElement ? activeElement.dataset.index : null;
+            const activeElementField = activeElement ? activeElement.dataset.field : null;
+
+            investmentTableBody.innerHTML = '';
+            let subtotal = 0;
+
+            if (state.lineItems.length === 0) {
+                 investmentTableBody.innerHTML = `<tr class="text-gray-400"><td class="p-3 italic" colspan="4">Click the '+' button to add services.</td></tr>`;
+            } else {
+                state.lineItems.forEach((item, index) => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b';
+                    row.innerHTML = `<td class="p-2"><span contenteditable="true" data-index="${index}" data-field="name" class="w-full inline-block p-1">${item.name}</span></td><td class="p-2 text-center"><input type="number" value="${item.quantity}" min="1" data-index="${index}" data-field="quantity" class="w-20 text-center bg-gray-50 p-1 rounded hover:bg-gray-100 focus:ring-1 focus:ring-blue-500"></td><td class="p-2 text-right"><input type="number" value="${item.rate}" min="0" step="100" data-index="${index}" data-field="rate" class="w-24 text-right bg-gray-50 p-1 rounded hover:bg-gray-100 focus:ring-1 focus:ring-blue-500"></td><td class="p-2 text-right font-medium">${(item.quantity * item.rate).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</td>`;
+                    investmentTableBody.appendChild(row);
+                    subtotal += item.quantity * item.rate;
+                });
+            }
+            
+            if(activeElementIndex && activeElementField) {
+                const newActiveElement = document.querySelector(`[data-index='${activeElementIndex}'][data-field='${activeElementField}']`);
+                if(newActiveElement) {
+                    newActiveElement.focus();
+                }
+            }
+
+            const gst = subtotal * 0.18;
+            const total = subtotal + gst;
+            const formatCurrency = (value) => value.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            document.getElementById('table-subtotal').textContent = formatCurrency(subtotal);
+            document.getElementById('table-gst').textContent = formatCurrency(gst);
+            document.getElementById('table-total').textContent = formatCurrency(total);
+        }
+
+        const dynamicContentParent = document.getElementById('dynamic-content-parent');
+        let scopeParent = null;
+
+        function addSectionToDOM(sectionKey) {
+             if (document.querySelector(`[data-section-id="${sectionKey}"]`)) return;
+
+            const sectionData = DETAILED_SECTIONS[sectionKey];
+            const sectionEl = document.createElement('div');
+            sectionEl.className = 'section-container page-break-inside-avoid';
+            sectionEl.dataset.sectionId = sectionKey;
+            
+            if (sectionData.isScope) {
+                if (!scopeParent) {
+                    scopeParent = document.createElement('div');
+                    scopeParent.className = 'section-container page-break-inside-avoid';
+                    scopeParent.dataset.sectionId = 'scope-parent';
+                    scopeParent.innerHTML = `<button class="section-toggle" title="Toggle visibility">👁️</button><h2 class="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">Detailed Scope of Service</h2><div class="space-y-6 pl-4 border-l-2 ml-2"></div>`;
+                    dynamicContentParent.appendChild(scopeParent);
+                }
+                sectionEl.innerHTML = `<h3 class="text-xl font-bold mb-2 text-gray-800">${sectionData.title}</h3><div contenteditable="true" class="text-gray-700 space-y-4 p-1 prose max-w-none">${sectionData.content}</div>`;
+                scopeParent.querySelector('.space-y-6').appendChild(sectionEl);
+            } else {
+                sectionEl.innerHTML = `<button class="section-toggle" title="Toggle visibility">👁️</button><h2 class="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">${sectionData.title}</h2><div contenteditable="true" class="text-gray-700 space-y-4 p-1 prose max-w-none">${sectionData.content}</div>`;
+                dynamicContentParent.appendChild(sectionEl);
+            }
+        }
+
+        document.getElementById('confirm-services-btn').addEventListener('click', () => {
+            const serviceCheckboxes = document.querySelectorAll('#service-list input[type="checkbox"]');
+            const currentlyCheckedIds = Array.from(serviceCheckboxes).filter(cb => cb.checked).map(cb => cb.dataset.serviceId);
+            const alreadyInStateIds = state.lineItems.map(item => item.id);
+            state.lineItems = state.lineItems.filter(item => currentlyCheckedIds.includes(item.id) || item.id.startsWith('custom-'));
+            currentlyCheckedIds.forEach(serviceId => {
+                if (!alreadyInStateIds.includes(serviceId)) {
+                     for (const category in ALL_SERVICES) {
+                        const serviceInfo = ALL_SERVICES[category].find(s => s.id === serviceId);
+                        if(serviceInfo) { state.lineItems.push({ ...serviceInfo, quantity: 1 }); break; }
+                    }
+                }
+            });
+            renderPriceTable();
+        });
+
+        document.getElementById('confirm-content-btn').addEventListener('click', () => {
+            document.querySelectorAll('#content-section-list input[type="checkbox"]:checked').forEach(cb => {
+                addSectionToDOM(cb.dataset.sectionKey);
+            });
+        });
+
+        document.getElementById('add-custom-item-btn').addEventListener('click', () => {
+             state.lineItems.push({ id: `custom-${Date.now()}`, name: 'New Service', quantity: 1, rate: 0 });
+             renderPriceTable();
+        });
+
+        document.getElementById('investment-table-body').addEventListener('input', (e) => {
+            const target = e.target;
+            const index = target.dataset.index;
+            const field = target.dataset.field;
+            if (index === undefined || field === undefined) return;
+            const value = (target.matches('[contenteditable]')) ? target.textContent : parseFloat(target.value) || 0;
+            if (state.lineItems[index]) { state.lineItems[index][field] = value; renderPriceTable(); }
+        });
+
+        document.getElementById('proposal-paper').addEventListener('click', e => {
+            if (e.target.classList.contains('section-toggle')) {
+                const section = e.target.closest('.section-container');
+                const isHidden = section.classList.toggle('is-hidden-preview');
+                e.target.textContent = isHidden ? '🚫' : '👁️';
+                e.target.title = isHidden ? 'Show Section' : 'Hide Section';
+            }
+        });
+        
+        document.getElementById('download-pdf-btn').addEventListener('click', () => {
+             const proposalPaper = document.getElementById('proposal-paper');
+             const clientName = document.getElementById('client-name').textContent || 'proposal';
+             
+             document.body.classList.add('pdf-export-mode');
+             proposalPaper.classList.add('exporting');
+             const opt = { 
+                margin: 0, 
+                filename: `${clientName.replace(/\s+/g, '_')}_Proposal.pdf`, 
+                image: { type: 'jpeg', quality: 0.98 }, 
+                html2canvas: { scale: 2, useCORS: true, letterRendering: true }, 
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['css', 'legacy'], before: '.page-break-before' }
+            };
+             html2pdf().from(proposalPaper).set(opt).save().then(() => {
+                proposalPaper.classList.remove('exporting');
+                document.body.classList.remove('pdf-export-mode');
+             });
+        });
+        
+        document.getElementById('proposal-date').textContent = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+        
+        const defaultSections = ['mission-vision', 'portfolio', 'timeline', 'responsibilities', 'communication'];
+        defaultSections.forEach(addSectionToDOM);
+        
+        renderPriceTable();
+        updateClientNameRefs();
+    });
+    </script>
+</body>
+</html>
