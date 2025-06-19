@@ -131,6 +131,9 @@
         <button id="add-services-btn" class="bg-blue-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-blue-700 transition-transform hover:scale-110" title="Add Services to Pricing">
             +
         </button>
+        <button id="add-link-btn" class="bg-purple-600 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-purple-700 transition-transform hover:scale-110" title="Add Hyperlink">
+            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M12.232 4.232a2.5 2.5 0 013.536 3.536l-1.225 1.224a.75.75 0 001.061 1.06l1.224-1.224a4 4 0 00-5.656-5.656l-3 3a4 4 0 00.225 5.865.75.75 0 00.976-1.138 2.5 2.5 0 01-.142-3.665l3-3z"></path><path d="M8.603 14.53a2.5 2.5 0 01-3.536-3.536l1.225-1.224a.75.75 0 00-1.061-1.06l-1.224 1.224a4 4 0 005.656 5.656l3-3a4 4 0 00-.225-5.865.75.75 0 00-.976 1.138 2.5 2.5 0 01.142 3.665l-3 3z"></path></svg>
+        </button>
     </div>
 
     <!-- Modals -->
@@ -363,12 +366,14 @@
                 }
             });
             renderPriceTable();
+            serviceModal.style.display = 'none';
         });
 
         document.getElementById('confirm-content-btn').addEventListener('click', () => {
             document.querySelectorAll('#content-section-list input[type="checkbox"]:checked').forEach(cb => {
                 addSectionToDOM(cb.dataset.sectionKey);
             });
+            contentModal.style.display = 'none';
         });
 
         document.getElementById('add-custom-item-btn').addEventListener('click', () => {
@@ -393,34 +398,149 @@
                 e.target.title = isHidden ? 'Show Section' : 'Hide Section';
             }
         });
-        
+
+        // Function to wait for images to load (used by old html2pdf path, can be removed if old path is fully removed)
+        // const waitForImages = (parentElement) => { ... }; // Assuming this might be removed or kept if needed elsewhere
+
+        // Helper function to load an image for jsPDF (Promise-based)
+        function loadImage(url) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';
+                img.onload = () => resolve(img);
+                img.onerror = (err) => reject(err);
+                img.src = url;
+            });
+        }
+
         document.getElementById('download-pdf-btn').addEventListener('click', () => {
-             const proposalPaper = document.getElementById('proposal-paper');
-             const clientName = document.getElementById('client-name').textContent || 'proposal';
-             
-             document.body.classList.add('pdf-export-mode');
-             proposalPaper.classList.add('exporting');
-             const opt = { 
-                margin: 0, 
-                filename: `${clientName.replace(/\s+/g, '_')}_Proposal.pdf`, 
-                image: { type: 'jpeg', quality: 0.98 }, 
-                html2canvas: { scale: 2, useCORS: true, letterRendering: true }, 
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak: { mode: ['css', 'legacy'], before: '.page-break-before' }
-            };
-             html2pdf().from(proposalPaper).set(opt).save().then(() => {
-                proposalPaper.classList.remove('exporting');
+            // const proposalPaper = document.getElementById('proposal-paper'); // Still needed for cleanup of classes by old logic if that was kept
+            const clientName = document.getElementById('client-name').textContent || 'proposal';
+
+            // --- TEMPORARILY DISABLE OLD HTML2PDF LOGIC ---
+            // const oldHtml2PdfPath = false;
+            // if (oldHtml2PdfPath) { /* ... entire old html2pdf code ... */ return; }
+
+            document.body.classList.add('pdf-export-mode');
+            // proposalPaper.classList.add('exporting'); // May not be needed for jsPDF
+
+            Promise.all([
+                loadImage('cover.jpg').catch(err => { console.error('Error loading cover.jpg:', err); return null; }),
+                loadImage('background.jpg').catch(err => { console.error('Error loading background.jpg:', err); return null; })
+            ]).then(([coverImage, backgroundImage]) => {
+                // Attempting to use jsPDF directly from the window object
+                const pdfDoc = new window.jsPDF('p', 'mm', 'a4');
+
+                // 1. Add Cover Page
+                if (coverImage) {
+                    pdfDoc.addImage(coverImage, 'JPEG', 0, 0, 210, 297);
+                } else {
+                    pdfDoc.setFillColor(255, 255, 255);
+                    pdfDoc.rect(0, 0, 210, 297, 'F');
+                    pdfDoc.setFontSize(10);
+                    pdfDoc.text('Cover image (cover.jpg) could not be loaded.', 10, 10);
+                }
+
+                // Helper to add new page with background
+                const addPageWithBG = () => {
+                    pdfDoc.addPage();
+                    if (backgroundImage) {
+                        pdfDoc.addImage(backgroundImage, 'JPEG', 0, 0, 210, 297);
+                    } else {
+                        pdfDoc.setFillColor(255, 255, 255);
+                        pdfDoc.rect(0, 0, 210, 297, 'F');
+                    }
+                };
+
+                // 2. Add Content Page 1 (Header and Intro)
+                addPageWithBG();
+
+                pdfDoc.setFontSize(10);
+                pdfDoc.setTextColor(100);
+                pdfDoc.text('PROPOSAL', 175, 20, { align: 'left' });
+
+                const currentClientName = document.getElementById('client-name').textContent || '[Brand Name]';
+                const proposalDate = document.getElementById('proposal-date').textContent || '[Date]';
+                const salesRep = document.getElementById('sales-rep').textContent || '[Sales Rep]';
+
+                pdfDoc.setFontSize(11);
+                pdfDoc.setTextColor(50);
+                pdfDoc.text('Prepared for:', 20, 35);
+                pdfDoc.text(currentClientName, 20, 42);
+
+                pdfDoc.text('Date:', 140, 35);
+                pdfDoc.text(proposalDate, 140, 42);
+                pdfDoc.text('Sales Rep:', 140, 49);
+                pdfDoc.text(salesRep, 140, 56);
+
+                pdfDoc.setDrawColor(200);
+                pdfDoc.line(20, 65, 190, 65);
+
+                const introDiv = document.querySelector('[data-section-id="intro"] > div');
+                if (introDiv) {
+                    const introText = introDiv.textContent.replace(/\[Brand Name\]/g, currentClientName).trim();
+                    const introLines = pdfDoc.splitTextToSize(introText, 170);
+                    pdfDoc.setFontSize(10);
+                    pdfDoc.setTextColor(80);
+                    pdfDoc.text(introLines, 20, 75);
+                }
+
+                // 3. Save PDF
+                pdfDoc.save(`${clientName.replace(/\s+/g, '_')}_jsPDF_Proposal.pdf`);
+
+            }).catch(err => {
+                console.error("Error during jsPDF generation:", err);
+                alert("Failed to generate PDF with jsPDF. Check console for errors.");
+            }).finally(() => {
+                // proposalPaper.classList.remove('exporting'); // If it was added
                 document.body.classList.remove('pdf-export-mode');
-             });
+            });
         });
         
         document.getElementById('proposal-date').textContent = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
         
-        const defaultSections = ['mission-vision', 'portfolio', 'timeline', 'responsibilities', 'communication'];
+        const defaultSections = ['mission-vision', 'portfolio', 'timeline', 'responsibilities', 'communication', 'terms'];
         defaultSections.forEach(addSectionToDOM);
         
         renderPriceTable();
         updateClientNameRefs();
+
+        document.getElementById('add-link-btn').addEventListener('click', () => {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) {
+                alert("Please select some text to create a link.");
+                return;
+            }
+
+            let parentNode = selection.anchorNode;
+            if (parentNode.nodeType !== Node.ELEMENT_NODE) {
+                parentNode = parentNode.parentNode;
+            }
+
+            let isContentEditable = false;
+            while (parentNode) {
+                if (parentNode.isContentEditable) {
+                    isContentEditable = true;
+                    break;
+                }
+                parentNode = parentNode.parentNode;
+            }
+
+            if (!isContentEditable) {
+                alert("Please select text within an editable area to create a link.");
+                return;
+            }
+
+            if (selection.toString().trim() === "") {
+                 alert("Please select some text to create a link.");
+                return;
+            }
+
+            const url = window.prompt("Enter link URL (e.g., https://example.com):");
+            if (url && url.trim() !== "") {
+                document.execCommand('createLink', false, url.trim());
+            }
+        });
     });
     </script>
 </body>
