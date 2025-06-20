@@ -224,6 +224,9 @@
     <script>
     document.addEventListener('DOMContentLoaded', () => {
 
+        const COVER_BASE64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAALCAAFAAUBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAE1P//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8BQ//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8BQ//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEABj8CX//aAAwDAQACAAMAAAAQAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAEP/aAAgBAwEBPxB//8QAFBEBAAAAAAAAAAAAAAAAAAAAEP/aAAgBAgEBPxB//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJf/9k=';
+        const BACKGROUND_BASE64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAALCAAFAAUBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAE1P//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8BQ//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8BQ//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEABj8CX//aAAwDAQACAAMAAAAQAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAEP/aAAgBAwEBPxB//8QAFBEBAAAAAAAAAAAAAAAAAAAAEP/aAAgBAgEBPxB//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJf/9k=';
+
         const ALL_SERVICES = {
             'Social Media Marketing': [ { id: 'smm-statics', name: 'Statics', rate: 3000 }, { id: 'smm-story', name: 'Social Media Story', rate: 3500 }, { id: 'smm-reels', name: 'Reels', rate: 8000 }, { id: 'smm-carousel', name: 'Carousel', rate: 5000 }, ],
             'Corporate & Brand Identity': [ { id: 'cbi-mascot', name: 'Mascot (3D)', rate: 30000 }, { id: 'cbi-brand-name', name: 'Brand Name Suggestion', rate: 15000 }, { id: 'cbi-logo-wordmark', name: 'Logo (Word Mark)', rate: 15000 }, ],
@@ -406,11 +409,42 @@
         function loadImage(url) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
-                img.crossOrigin = 'Anonymous';
+                img.crossOrigin = 'anonymous';
                 img.onload = () => resolve(img);
-                img.onerror = (err) => reject(err);
+                img.onerror = reject;
                 img.src = url;
             });
+        }
+
+        function renderNode(pdf, node, x, y, maxWidth) {
+            const lineHeight = 6;
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent.trim();
+                if (text) {
+                    const lines = pdf.splitTextToSize(text, maxWidth);
+                    lines.forEach(line => {
+                        pdf.text(line, x, y);
+                        y += lineHeight;
+                    });
+                }
+            } else if (node.nodeName === 'A') {
+                const text = node.textContent.trim();
+                if (text) {
+                    const lines = pdf.splitTextToSize(text, maxWidth);
+                    lines.forEach(line => {
+                        pdf.textWithLink(line, x, y, { url: node.href });
+                        y += lineHeight;
+                    });
+                }
+            } else {
+                node.childNodes.forEach(child => {
+                    y = renderNode(pdf, child, x, y, maxWidth);
+                });
+                if (node.tagName === 'P' || node.tagName === 'DIV') {
+                    y += lineHeight;
+                }
+            }
+            return y;
         }
 
         document.getElementById('download-pdf-btn').addEventListener('click', () => {
@@ -425,8 +459,8 @@
             // proposalPaper.classList.add('exporting'); // May not be needed for jsPDF
 
             Promise.all([
-                loadImage('cover.jpg').catch(err => { console.error('Error loading cover.jpg:', err); return null; }),
-                loadImage('background.jpg').catch(err => { console.error('Error loading background.jpg:', err); return null; })
+                loadImage(COVER_BASE64).catch(err => { console.error('Error loading cover image:', err); return null; }),
+                loadImage(BACKGROUND_BASE64).catch(err => { console.error('Error loading background image:', err); return null; })
             ]).then(([coverImage, backgroundImage]) => {
                 // Attempting to use jsPDF directly from the window object
                 const pdfDoc = new window.jsPDF('p', 'mm', 'a4');
@@ -478,12 +512,31 @@
 
                 const introDiv = document.querySelector('[data-section-id="intro"] > div');
                 if (introDiv) {
-                    const introText = introDiv.textContent.replace(/\[Brand Name\]/g, currentClientName).trim();
-                    const introLines = pdfDoc.splitTextToSize(introText, 170);
                     pdfDoc.setFontSize(10);
                     pdfDoc.setTextColor(80);
-                    pdfDoc.text(introLines, 20, 75);
+                    renderNode(pdfDoc, introDiv, 20, 75, 170);
                 }
+
+                const otherSections = Array.from(document.querySelectorAll('.section-container'))
+                    .filter(sec => !sec.classList.contains('is-hidden-preview') && sec.dataset.sectionId !== 'intro');
+
+                otherSections.forEach(section => {
+                    addPageWithBG();
+                    let posY = 20;
+                    const heading = section.querySelector('h2, h3');
+                    if (heading) {
+                        pdfDoc.setFontSize(12);
+                        pdfDoc.setTextColor(20);
+                        pdfDoc.text(heading.textContent.trim(), 20, posY);
+                        posY += 10;
+                    }
+                    const content = section.querySelector('[contenteditable]');
+                    if (content) {
+                        pdfDoc.setFontSize(10);
+                        pdfDoc.setTextColor(80);
+                        renderNode(pdfDoc, content, 20, posY, 170);
+                    }
+                });
 
                 // 3. Save PDF
                 pdfDoc.save(`${clientName.replace(/\s+/g, '_')}_jsPDF_Proposal.pdf`);
