@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blank Analytica | Interactive Proposal Builder</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -403,32 +404,46 @@
         // const waitForImages = (parentElement) => { ... }; // Assuming this might be removed or kept if needed elsewhere
 
         // Helper function to load an image for jsPDF (Promise-based)
-        function loadImage(url) {
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                img.crossOrigin = 'Anonymous';
-                img.onload = () => resolve(img);
-                img.onerror = (err) => reject(err);
-                img.src = url;
-            });
-        }
+        // Not strictly needed for the base64 images if we inline them, but might be useful for other images.
+        // For now, we will use direct image creation for base64 to avoid issues with crossOrigin for data URIs.
+        // function loadImage(url) {
+        //     return new Promise((resolve, reject) => {
+        //         const img = new Image();
+        //         // crossOrigin should not be set for data URIs
+        //         if (!url.startsWith('data:')) {
+        //            img.crossOrigin = 'Anonymous';
+        //         }
+        //         img.onload = () => resolve(img);
+        //         img.onerror = (err) => reject(err);
+        //         img.src = url;
+        //     });
+        // }
 
         document.getElementById('download-pdf-btn').addEventListener('click', () => {
-            // const proposalPaper = document.getElementById('proposal-paper'); // Still needed for cleanup of classes by old logic if that was kept
             const clientName = document.getElementById('client-name').textContent || 'proposal';
-
-            // --- TEMPORARILY DISABLE OLD HTML2PDF LOGIC ---
-            // const oldHtml2PdfPath = false;
-            // if (oldHtml2PdfPath) { /* ... entire old html2pdf code ... */ return; }
-
             document.body.classList.add('pdf-export-mode');
-            // proposalPaper.classList.add('exporting'); // May not be needed for jsPDF
+
+            const coverBase64 = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMTAiIGhlaWdodD0iMjk3Ij4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJncmV5Ii8+CiAgPHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyMCIgZmlsbD0id2hpdGUiPkNvdmVyIFBhZ2U8L3RleHQ+Cjwvc3ZnPgo=';
+            const backgroundBase64 = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMTAiIGhlaWdodD0iMjk3Ij4KICA8cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJsaWdodGJsdWUiLz4KICA8dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjIwIiBmaWxsPSJibGFjayI+UGFnZSBCYWNrZ3JvdW5kPC90ZXh0Pgo8L3N2Zz4K';
+
+            const coverImagePromise = new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = (err) => { console.error('Error loading cover base64:', err); reject(err); };
+                img.src = coverBase64;
+            });
+
+            const backgroundImagePromise = new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = (err) => { console.error('Error loading background base64:', err); reject(err); };
+                img.src = backgroundBase64;
+            });
 
             Promise.all([
-                loadImage('cover.jpg').catch(err => { console.error('Error loading cover.jpg:', err); return null; }),
-                loadImage('background.jpg').catch(err => { console.error('Error loading background.jpg:', err); return null; })
+                coverImagePromise.catch(err => null),
+                backgroundImagePromise.catch(err => null)
             ]).then(([coverImage, backgroundImage]) => {
-                // Attempting to use jsPDF directly from the window object
                 const pdfDoc = new window.jsPDF('p', 'mm', 'a4');
 
                 // 1. Add Cover Page
@@ -506,6 +521,7 @@
         updateClientNameRefs();
 
         document.getElementById('add-link-btn').addEventListener('click', () => {
+            let focusedEditableElement = null;
             const selection = window.getSelection();
             if (!selection.rangeCount) {
                 alert("Please select some text to create a link.");
@@ -521,6 +537,7 @@
             while (parentNode) {
                 if (parentNode.isContentEditable) {
                     isContentEditable = true;
+                    focusedEditableElement = parentNode; // Assign found editable parent
                     break;
                 }
                 parentNode = parentNode.parentNode;
@@ -538,6 +555,22 @@
 
             const url = window.prompt("Enter link URL (e.g., https://example.com):");
             if (url && url.trim() !== "") {
+                if (focusedEditableElement) {
+                    const currentSelection = window.getSelection();
+                    const range = currentSelection.rangeCount > 0 ? currentSelection.getRangeAt(0) : null;
+
+                    focusedEditableElement.focus(); // Restore focus to the editable element
+
+                    // Restore selection if possible, as focus() can sometimes clear it
+                    if (range && currentSelection.rangeCount === 0) { // Check if selection was lost
+                       currentSelection.removeAllRanges(); // Clear any new, incorrect ranges
+                       currentSelection.addRange(range); // Re-add the original range
+                    } else if (range && currentSelection.rangeCount > 0) {
+                       // It's possible the selection changed but didn't disappear.
+                       // For simplicity, we'll assume if a selection exists, it's the intended one or close enough.
+                       // More complex restoration might be needed if this isn't robust.
+                    }
+                }
                 document.execCommand('createLink', false, url.trim());
             }
         });
